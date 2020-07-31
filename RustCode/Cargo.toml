@@ -1,0 +1,23 @@
+[package]
+name = "particle_gibbs"
+version = "0.1.0"
+authors = ["niharikag <niharika.gauraha@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "rust_library"
+crate-type = ["dylib"]
+
+[dependencies]
+rand = "0.7"
+rand_distr = "0.2"
+ndarray = "0.13"
+gnuplot = "0.0"
+statrs = "0.12"
+plotlib = "0.5"
+pyo3 = "0.11"
+rusty-machine = "0.5.4"
+itertools-num = "0.1"
+random_choice = "0.3"
+
