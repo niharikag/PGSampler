@@ -7,8 +7,8 @@ from experiments.utils import transfer_func, state_transition_func, generate_dat
 
 np.random.seed(123)
 # Set up some parameters
-n_particles = 100
-seq_len = 100  # Length of data record
+n_particles = 500
+seq_len = 500  # Length of data record
 f = state_transition_func
 g = transfer_func
 r = 1.
@@ -18,19 +18,6 @@ xref = np.zeros(seq_len)
 data_x, data_y = generate_data(r=r, q=q, seq_len=seq_len)
 
 
-def load_file(file_name):
-    data = []
-
-    file = open(file_name)
-    reader = csv.reader(file,  delimiter=',')
-
-    for row in reader:
-        data.append(row)
-    file.close()
-
-    return np.asarray(data[0]).astype(float)
-
-
 def plot_pg_results():
     max_iters = 10000
     q_initialize = 1.0
@@ -38,7 +25,7 @@ def plot_pg_results():
     priora = .01
     priorb = .01
 
-    burn_in = int(max_iters * 0.3)
+    burn_in = int(max_iters * 1/3)
 
     (x, pg_q, pg_r) = run_particle_gibbs(data_y, 0.0, xref, q_initialize, r_initialize, priora, priorb,
                                          n_particles, False, max_iters)

@@ -3,7 +3,7 @@ use rand::rngs::StdRng;
 use rand_distr::StandardNormal;
 //use random_choice::random_choice;
 //use rand::seq::index::sample;
-
+//use rayon::prelude::*;
 
 #[allow(dead_code)]
 pub fn binary_search(arr: &[f64], target: &f64) -> usize
@@ -142,6 +142,7 @@ pub fn _stratified_resampling(rng:&mut StdRng, w: &Vec<f64>, size: usize) ->Vec<
 #[inline]
 pub fn transfer_func(x:&Vec<f64>)->Vec<f64> {
     let out:Vec<f64> = x.iter().map(|x|
+    //let out:Vec<f64> = x.into_par_iter().map(|x|
     x.powi(2)/20.0).collect();
     out
 }

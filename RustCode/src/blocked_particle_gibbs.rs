@@ -1,10 +1,40 @@
 use rand::Rng;
-//use crate::conditional_smc::CSMC;
+use rayon::prelude::*;
 use crate::utils;
 use rand::{SeedableRng};
 use rand::rngs::StdRng;
 use std::process::exit;
 use rand_distr::StandardNormal;
+
+pub struct SamplerInput{
+    pub q: f64,
+    pub r: f64,
+    pub y: Vec<f64>,
+    pub x0: f64,
+    pub x_ref: Vec<f64>,
+    pub pos_block:i32,
+    pub x_last:f64,
+    pub start_time:usize,
+    pub n_particles: usize
+}
+
+#[allow(dead_code)]
+impl SamplerInput {
+    fn new(q: f64, r: f64, y: Vec<f64>, x0: f64, x_ref: Vec<f64>, pos_block:i32,
+           x_last:f64, start_time:usize, n_particles: usize) -> SamplerInput {
+        SamplerInput {q, r, y, x0, x_ref, pos_block, x_last, start_time, n_particles}
+    }
+}
+
+impl Default for SamplerInput {
+    #[inline]
+    fn default() -> SamplerInput {
+        SamplerInput {
+            q: 0.0, r: 0.0, y: Vec::new(), x0: 0.0, x_ref: Vec::new(), pos_block: 0,
+            x_last: 0.0, start_time: 0, n_particles: 100
+        }
+    }
+}
 
 
 // consitional_SMC class
@@ -194,7 +224,7 @@ impl BlockedSMC {
 }
 
 #[allow(dead_code)]
-pub fn run_blocked_smc(q: f64, r: f64, y: &Vec<f64>, x0: f64, x_ref: &Vec<f64>, pos_block:i32,
+pub fn run_blocked_smc_seq(q: f64, r: f64, y: &Vec<f64>, x0: f64, x_ref: &Vec<f64>, pos_block:i32,
                           x_last:f64, start_time:usize, n_particles: usize)->Vec<f64> {
     let f = utils::_state_transition_func;
     let g: fn(f64) -> f64 = utils::_transfer_func;
@@ -206,8 +236,21 @@ pub fn run_blocked_smc(q: f64, r: f64, y: &Vec<f64>, x0: f64, x_ref: &Vec<f64>, 
     x_states
 }
 
+
 #[allow(dead_code)]
-pub fn iterate_blocked_pg(q: f64, r: f64, y: &Vec<f64>, x0: f64, x_ref: &Vec<f64>, n_particles: usize,
+pub fn run_blocked_smc(input: &SamplerInput)->Vec<f64> {
+    let f = utils::_state_transition_func;
+    let g: fn(f64) -> f64 = utils::_transfer_func;
+    let mut b_smc: BlockedSMC = BlockedSMC::new(f, g, input.q, input.r);
+
+    let x_states: Vec<f64> = b_smc.sample_states(&input.y, input.x0, &input.x_ref, input.pos_block,
+                                                 input.x_last, input.start_time, input.n_particles);
+
+    x_states
+}
+
+#[allow(dead_code)]
+pub fn blocked_pg_sampler_seq(q: f64, r: f64, y: &Vec<f64>, x0: f64, x_ref: &Vec<f64>, n_particles: usize,
                     l:usize, p:usize, max_iter:usize)->Vec<f64> {
 
     let seq_len:usize = y.len();
@@ -262,7 +305,7 @@ pub fn iterate_blocked_pg(q: f64, r: f64, y: &Vec<f64>, x0: f64, x_ref: &Vec<f64
             x_ref_b.copy_from_slice(&x_ref_temp[s..u + 1]);
 
             //println!("{:?}", x_ref_temp);
-            let result = run_blocked_smc(q, r, &y_b, x_init, &x_ref_b,
+            let result = run_blocked_smc_seq(q, r, &y_b, x_init, &x_ref_b,
                                          pos_block, x_last, s, n_particles);
             //println!("{}",u);
             for (i,n) in (s..u).enumerate() {
@@ -270,9 +313,98 @@ pub fn iterate_blocked_pg(q: f64, r: f64, y: &Vec<f64>, x0: f64, x_ref: &Vec<f64
             }
             //println!("{:?}",result);
         }
-
         x_ref_temp = x_ref_new.clone();
     }
 
+    x_ref_new.clone()
+}
+
+
+#[allow(dead_code)]
+pub fn blocked_pg_sampler(q: f64, r: f64, y: &Vec<f64>, x0: f64, x_ref: &Vec<f64>, n_particles: usize,
+                    l:usize, p:usize, max_iter:usize)->Vec<f64> {
+
+    let seq_len:usize = y.len();
+    let start_ids:Vec<usize> = (0..seq_len).step_by(l-p).collect();
+    let mut x_ref_new: Vec<f64> = vec![0.0;seq_len];
+    let num_blocks:usize;
+    let y_temp = y.clone();
+    let x_ref_temp = x_ref.clone();
+    let mut sampler_inputs: Vec<SamplerInput> = Default::default();
+
+    if start_ids[start_ids.len()-1] == seq_len-1{
+        num_blocks = start_ids.len()-1;
+    }
+    else {
+        num_blocks = start_ids.len();
+    }
+
+    let mut result: Vec<Vec<f64>> = vec![Vec::new(); num_blocks];
+
+    for _m in 0..max_iter {
+        for i in 0..num_blocks {
+            let s = start_ids[i];
+            let u:usize;
+            let pos_block:i32;
+            let x_init:f64;
+            let x_last:f64;
+
+            if s + l-1 < seq_len-1{
+                u = s + l-1;
+            }
+            else {
+                u = seq_len-1
+            }
+            let mut y_b: Vec<f64> = vec![0.0;u-s+1];
+            let mut x_ref_b: Vec<f64> = vec![0.0;u-s+1];
+
+            if i+1 == num_blocks{
+               //last block
+                pos_block = -1;
+                x_init = x_ref_temp[s-1];
+                x_last = 0.0; //None
+            }else if i > 0 {
+                // intermediate block
+                pos_block = 1;
+                x_init = x_ref_temp[s-1];
+                x_last = x_ref_temp[u+1];
+            }else {
+                // first block
+                x_init = x0;
+                x_last = x_ref_temp[u+1];
+                pos_block = 0;
+            }
+            //y_temp[s..u + 1].clone_from_slice(&y_b);
+            y_b.copy_from_slice(&y_temp[s..u + 1]);
+            x_ref_b.copy_from_slice(&x_ref_temp[s..u + 1]);
+
+
+            sampler_inputs.push(SamplerInput::new(q, r, y_b, x_init, x_ref_b, pos_block, x_last, s, n_particles));
+            //println!("{}",u);
+
+            //println!("{:?}",result);
+        }
+
+            & mut result.par_iter_mut().zip(sampler_inputs.par_iter())
+            .for_each(|(x, y)|
+            {
+               *x = run_blocked_smc(y);
+            });
+
+        for b in 0..num_blocks {
+            let s = sampler_inputs[b].start_time;
+            let u:usize;
+            if s + l < seq_len{
+                u = s + l;
+            }
+            else {
+                u = seq_len
+            }
+
+            for (i, n) in (s..u).enumerate() {
+                x_ref_new[n] = result[b][i];
+            }
+        }
+    }
     x_ref_new.clone()
 }

@@ -20,4 +20,5 @@ pyo3 = "0.11"
 rusty-machine = "0.5.4"
 itertools-num = "0.1"
 random_choice = "0.3"
+rayon = "1.3"
 
